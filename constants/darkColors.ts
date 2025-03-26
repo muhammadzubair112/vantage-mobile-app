@@ -1,0 +1,15 @@
+export default {
+  primary: '#6C8EFF',
+  secondary: '#F95EA9',
+  background: '#121212',
+  text: '#FFFFFF',
+  lightText: '#AAAAAA',
+  border: '#333333',
+  success: '#4CAF50',
+  error: '#F44336',
+  cardBackground: '#1E1E1E',
+  calendarHighlight: '#1A2747',
+  calendarSelected: '#6C8EFF',
+  messageOutgoing: '#1A2747',
+  messageIncoming: '#2A2A2A',
+};
