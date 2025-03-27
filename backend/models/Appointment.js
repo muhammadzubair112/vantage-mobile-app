@@ -47,6 +47,15 @@ const AppointmentSchema = new mongoose.Schema({
     enum: ['pending', 'confirmed', 'cancelled'],
     default: 'pending'
   },
+  googleCalendarEventId: {
+    type: String
+  },
+  zoomMeeting: {
+    id: String,
+    join_url: String,
+    start_url: String,
+    password: String
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Bell, Shield, HelpCircle, LogOut, ChevronRight, Moon, Smartphone, UserPlus, Users, Pencil } from 'lucide-react-native';
+import { User, Bell, Shield, HelpCircle, LogOut, ChevronRight, Moon, Smartphone, UserPlus, Users, Pencil, Calendar } from 'lucide-react-native';
 import { Header } from '@/components/Header';
 import { useTheme } from '@/components/ThemeProvider';
 import { useThemeStore } from '@/hooks/useThemeStore';
@@ -48,6 +48,10 @@ export default function ProfileScreen() {
   
   const handleEditProfile = () => {
     router.push('/profile/edit');
+  };
+
+  const handleManageAvailability = () => {
+    router.push('/profile/availability');
   };
 
   const styles = createStyles(colors);
@@ -99,6 +103,32 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.userName}>{user?.name || 'User'}</Text>
           <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
+          {!user?.isEmailVerified && (
+            <View style={styles.verificationContainer}>
+              <Text style={styles.verificationText}>Email not verified</Text>
+              <TouchableOpacity onPress={async () => {
+                try {
+                  const response = await api.apiCall('/auth/resend-verification', {
+                    method: 'POST',
+                    requiresAuth: true
+                  });
+                  if (response.success) {
+                    Alert.alert(
+                      'Success',
+                      'Verification email sent! Please check your inbox.'
+                    );
+                  }
+                } catch (err) {
+                  Alert.alert(
+                    'Error',
+                    'Failed to send verification email. Please try again.'
+                  );
+                }
+              }}>
+                <Text style={styles.verifyLink}>Resend verification email</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {user?.companyName && (
             <Text style={styles.companyName}>{user.companyName}</Text>
           )}
@@ -176,6 +206,25 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
+        
+        {user?.role === 'admin' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Business Settings</Text>
+            
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={handleManageAvailability}
+            >
+              <View style={styles.menuLeft}>
+                <View style={styles.menuIconContainer}>
+                  <Calendar size={20} color={colors.primary} />
+                </View>
+                <Text style={styles.menuText}>Manage Availability</Text>
+              </View>
+              <ChevronRight size={20} color={colors.lightText} />
+            </TouchableOpacity>
+          </View>
+        )}
         
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
@@ -399,5 +448,20 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  verificationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  verificationText: {
+    fontSize: 14,
+    color: colors.error,
+  },
+  verifyLink: {
+    fontSize: 14,
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
 });

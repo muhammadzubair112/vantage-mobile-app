@@ -44,6 +44,7 @@ const morgan = require('morgan');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/error');
+const bypassRateLimit = require('./middleware/rateLimiter');
 
 console.log('Starting server initialization...');
 
@@ -64,13 +65,26 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
+// Apply rate limiting
+app.use(bypassRateLimit);
+
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'exp://localhost:19000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    debug('Incoming request from origin:', origin);
+    
+    // Allow all origins during testing
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
-  exposedHeaders: ['set-cookie']
+  exposedHeaders: ['Set-Cookie']
 };
 
 app.use(cors(corsOptions));
@@ -85,12 +99,11 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok',
-    timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV,
-    pid: process.pid
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -102,6 +115,7 @@ const teams = require('./routes/teams');
 const services = require('./routes/services');
 const appointments = require('./routes/appointments');
 const messages = require('./routes/messages');
+const availability = require('./routes/availability');
 console.log('Route files loaded');
 
 console.log('Mounting routes...');
@@ -112,6 +126,7 @@ app.use('/api/teams', teams);
 app.use('/api/services', services);
 app.use('/api/appointments', appointments);
 app.use('/api/messages', messages);
+app.use('/api/availability', availability);
 console.log('Routes mounted');
 
 // Error handler middleware

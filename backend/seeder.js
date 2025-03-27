@@ -62,16 +62,22 @@ const importData = async () => {
 
     // Create admin user
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash('password123', salt);
+    const hashedPassword = await bcrypt.hash('Password123!', salt);
 
     const admin = await User.create({
-      name: 'John Admin',
-      email: 'admin@example.com',
+      name: 'Adam Wolfson',
+      email: 'vantagebusinessinc@gmail.com',
       password: hashedPassword,
       role: 'admin',
-      phone: '+1234567890',
-      companyName: 'Vantage Media'
+      phone: '8186018009',
+      companyName: 'Vantage Media',
+      isEmailVerified: true,
+      isActive: true
     });
+
+    console.log('Admin user created successfully!');
+    console.log('Email:', admin.email);
+    console.log('Password: Password123!');
 
     // Create client user
     const client = await User.create({

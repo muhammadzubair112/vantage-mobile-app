@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MessageCircle, Search, Plus, Users, LogIn } from 'lucide-react-native';
@@ -8,16 +8,30 @@ import { ConversationItem } from '@/components/ConversationItem';
 import { useMessageStore } from '@/hooks/useMessageStore';
 import { useTheme } from '@/components/ThemeProvider';
 import { useAuthStore } from '@/hooks/useAuthStore';
+import { useApi } from '@/hooks/useApi';
 import { Button } from '@/components/Button';
 
 export default function MessagesScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const api = useApi();
   const { conversations, setActiveConversation, createTeamChat } = useMessageStore();
   const { user, teams, isAuthenticated } = useAuthStore();
+  const [searchQuery, setSearchQuery] = useState('');
   
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return conversations.filter(conversation => 
+      conversation.clientName.toLowerCase().includes(query) ||
+      (conversation.clientCompany && conversation.clientCompany.toLowerCase().includes(query)) ||
+      conversation.lastMessage.toLowerCase().includes(query)
+    );
+  }, [conversations, searchQuery]);
+
   const handleConversationPress = (conversationId: string) => {
-    setActiveConversation(conversationId);
+    setActiveConversation(conversationId, api);
     router.push(`/conversation/${conversationId}`);
   };
   
@@ -25,7 +39,7 @@ export default function MessagesScreen() {
     return conversations.reduce((total, conv) => total + conv.unreadCount, 0);
   };
   
-  const handleCreateTeamChat = () => {
+  const handleCreateTeamChat = async () => {
     if (!user) {
       router.push('/auth/login');
       return;
@@ -39,8 +53,8 @@ export default function MessagesScreen() {
     }
     
     // Create team chat
-    const chatId = createTeamChat(userTeam.id, userTeam.name);
-    setActiveConversation(chatId);
+    const chatId = await createTeamChat(userTeam.id, userTeam.name, api);
+    setActiveConversation(chatId, api);
     router.push(`/conversation/${chatId}`);
   };
 
@@ -90,13 +104,27 @@ export default function MessagesScreen() {
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Search size={20} color={colors.lightText} />
-          <Text style={styles.searchPlaceholder}>Search conversations...</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search conversations..."
+            placeholderTextColor={colors.lightText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              style={styles.clearButton} 
+              onPress={() => setSearchQuery('')}
+            >
+              <Text style={styles.clearButtonText}>×</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       
-      {conversations.length > 0 ? (
+      {filteredConversations.length > 0 ? (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ConversationItem 
@@ -108,9 +136,13 @@ export default function MessagesScreen() {
       ) : (
         <View style={styles.emptyContainer}>
           <MessageCircle size={48} color={colors.lightText} />
-          <Text style={styles.emptyTitle}>No Messages Yet</Text>
+          <Text style={styles.emptyTitle}>
+            {searchQuery ? 'No matching conversations' : 'No Messages Yet'}
+          </Text>
           <Text style={styles.emptyText}>
-            Your conversations will appear here.
+            {searchQuery 
+              ? 'Try searching with different keywords'
+              : 'Your conversations will appear here.'}
           </Text>
         </View>
       )}
@@ -146,10 +178,20 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  searchPlaceholder: {
+  searchInput: {
+    flex: 1,
     marginLeft: 8,
-    color: colors.lightText,
     fontSize: 14,
+    color: colors.text,
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  clearButtonText: {
+    color: colors.lightText,
+    fontSize: 18,
+    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,

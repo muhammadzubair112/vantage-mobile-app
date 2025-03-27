@@ -81,6 +81,12 @@ function RootLayoutNav() {
           headerShown: false
         }} 
       />
+      <Stack.Screen 
+        name="profile/availability" 
+        options={{ 
+          headerShown: false
+        }} 
+      />
     </Stack>
   );
 }

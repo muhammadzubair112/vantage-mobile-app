@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 const User = require('../models/User');
-const sendEmail = require('../utils/sendEmail');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
 
 // Password validation
 const validatePassword = (password) => {
@@ -26,95 +26,73 @@ const validatePassword = (password) => {
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = asyncHandler(async (req, res, next) => {
-  console.log('Starting registration process...');
-  console.log('Request body:', { ...req.body, password: '[REDACTED]' });
+  console.log('Request body:', {
+    ...req.body,
+    password: '[REDACTED]'
+  });
+
+  const { name, email, password, companyName, phone } = req.body;
+
+  // Validate required fields
+  if (!name || !email || !password) {
+    return next(new ErrorResponse('Please provide name, email and password', 400));
+  }
+
+  console.log('Validating password...');
+  // Validate password
+  const passwordErrors = validatePassword(password);
+  if (passwordErrors.length > 0) {
+    return next(new ErrorResponse(passwordErrors.join('. '), 400));
+  }
+
+  console.log('Checking for existing user...');
+  // Check for existing user
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    return next(new ErrorResponse('Email already registered', 400));
+  }
+
+  console.log('Creating new user...');
+  // Generate verification token
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  const verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+  // Create user
+  const userData = {
+    name,
+    email,
+    password,
+    companyName: companyName || '',
+    phone: phone || '',
+    isActive: true,
+    lastLogin: Date.now(),
+    emailVerificationToken: verificationToken,
+    emailVerificationExpire: verificationTokenExpire,
+    isEmailVerified: false
+  };
+
+  console.log('User data:', {
+    ...userData,
+    password: '[REDACTED]'
+  });
+
+  const user = await User.create(userData);
+  console.log('User created successfully:', user._id);
 
   try {
-    const { name, email, password, companyName, phone } = req.body;
-
-    // Validate required fields
-    if (!name || !email || !password) {
-      console.log('Missing required fields');
-      return next(new ErrorResponse('Please provide name, email and password', 400));
-    }
-
-    // Validate password
-    console.log('Validating password...');
-    const passwordErrors = validatePassword(password);
-    if (passwordErrors.length > 0) {
-      console.log('Password validation failed:', passwordErrors);
-      return next(new ErrorResponse(passwordErrors.join('. '), 400));
-    }
-
-    // Check for existing user
-    console.log('Checking for existing user...');
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      console.log('User already exists with email:', email);
-      return next(new ErrorResponse('Email already registered', 400));
-    }
-
-    // Create user
-    console.log('Creating new user...');
-    const userData = {
-      name,
-      email,
-      password,
-      companyName,
-      phone,
-      isActive: true,
-      lastLogin: Date.now()
-    };
-
-    console.log('User data:', { ...userData, password: '[REDACTED]' });
+    console.log('Sending verification email...');
+    // Send verification email
+    await sendVerificationEmail(email, name, verificationToken);
+    console.log('Verification email sent successfully');
     
-    let user;
-    try {
-      user = await User.create(userData);
-      console.log('User created successfully:', user._id);
-    } catch (createError) {
-      console.error('Error creating user:', createError);
-      return next(new ErrorResponse('Error creating user account', 500));
-    }
-
-    // Generate token
     console.log('Generating authentication token...');
-    let token;
-    try {
-      token = user.getSignedJwtToken();
-      console.log('Token generated successfully');
-    } catch (tokenError) {
-      console.error('Token generation error:', tokenError);
-      return next(new ErrorResponse('Error generating authentication token', 500));
-    }
-
-    // Send response
-    const options = {
-      expires: new Date(Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000),
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production'
-    };
-
-    console.log('Sending success response...');
-    res
-      .status(201)
-      .cookie('token', token, options)
-      .json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          companyName: user.companyName
-        }
-      });
-
+    // Send token response
+    sendTokenResponse(user, 201, res);
+    console.log('Token generated successfully');
   } catch (error) {
-    console.error('Unhandled registration error:', error);
-    console.error('Stack trace:', error.stack);
-    return next(new ErrorResponse('Error during registration process', 500));
+    console.error('Error sending verification email:', error);
+    // If email fails, still create user but log error
+    sendTokenResponse(user, 201, res);
   }
 });
 
@@ -161,16 +139,14 @@ exports.login = asyncHandler(async (req, res, next) => {
 });
 
 // @desc    Verify email
-// @route   GET /api/v1/auth/verify-email/:token
+// @route   GET /api/auth/verify-email/:token
 // @access  Public
 exports.verifyEmail = asyncHandler(async (req, res, next) => {
-  const emailVerificationToken = crypto
-    .createHash('sha256')
-    .update(req.params.token)
-    .digest('hex');
+  const { token } = req.params;
 
+  // Find user with matching token and token not expired
   const user = await User.findOne({
-    emailVerificationToken,
+    emailVerificationToken: token,
     emailVerificationExpire: { $gt: Date.now() }
   });
 
@@ -178,13 +154,16 @@ exports.verifyEmail = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Invalid or expired verification token', 400));
   }
 
+  // Update user
   user.isEmailVerified = true;
   user.emailVerificationToken = undefined;
   user.emailVerificationExpire = undefined;
-
   await user.save();
 
-  sendTokenResponse(user, 200, res);
+  res.status(200).json({
+    success: true,
+    message: 'Email verified successfully'
+  });
 });
 
 // @desc    Forgot password
@@ -208,11 +187,7 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please click on the link to reset your password: \n\n ${resetUrl}`;
 
   try {
-    await sendEmail({
-      email: user.email,
-      subject: 'Password reset token',
-      message
-    });
+    await sendPasswordResetEmail(user.email, user.name, resetToken);
 
     res.status(200).json({ success: true, data: 'Email sent' });
   } catch (err) {
@@ -360,17 +335,134 @@ exports.getMe = asyncHandler(async (req, res, next) => {
   }
 });
 
+// @desc    Resend verification email
+// @route   POST /api/auth/resend-verification
+// @access  Private
+exports.resendVerificationEmail = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return next(new ErrorResponse('User not found', 404));
+  }
+
+  if (user.isEmailVerified) {
+    return next(new ErrorResponse('Email already verified', 400));
+  }
+
+  // Generate new verification token
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  user.emailVerificationToken = verificationToken;
+  user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  await user.save();
+
+  try {
+    await sendVerificationEmail(user.email, user.name, verificationToken);
+    res.status(200).json({
+      success: true,
+      message: 'Verification email sent successfully'
+    });
+  } catch (error) {
+    return next(new ErrorResponse('Failed to send verification email', 500));
+  }
+});
+
+// @desc    Direct password reset (admin only)
+// @route   POST /api/auth/reset-password-direct
+// @access  Public
+exports.resetPasswordDirect = asyncHandler(async (req, res, next) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return next(new ErrorResponse('Please provide email and new password', 400));
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return next(new ErrorResponse('User not found', 404));
+  }
+
+  // Update password
+  user.password = newPassword;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Password updated successfully'
+  });
+});
+
+// @desc    Delete user account (admin only)
+// @route   DELETE /api/auth/delete-account
+// @access  Public
+exports.deleteAccount = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new ErrorResponse('Please provide an email address', 400));
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return next(new ErrorResponse('User not found', 404));
+  }
+
+  await user.deleteOne();
+  res.status(200).json({
+    success: true,
+    message: 'Account deleted successfully'
+  });
+});
+
+// @desc    Update user role to admin
+// @route   PUT /api/auth/update-role
+// @access  Public
+exports.updateRoleToAdmin = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new ErrorResponse('Please provide an email address', 400));
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return next(new ErrorResponse('User not found', 404));
+  }
+
+  user.role = 'admin';
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'User role updated to admin successfully',
+    data: user
+  });
+});
+
 // Get token from model, create cookie and send response
 const sendTokenResponse = (user, statusCode, res) => {
   // Create token
   const token = user.getSignedJwtToken();
 
+  // Cookie options
+  const options = {
+    expires: new Date(
+      Date.now() + parseInt(process.env.JWT_COOKIE_EXPIRE) * 24 * 60 * 60 * 1000
+    ),
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  };
+
   // Remove password from output
   user.password = undefined;
 
-  res.status(statusCode).json({
-    success: true,
-    token,
-    data: user
-  });
+  res
+    .status(statusCode)
+    .cookie('token', token, options)
+    .json({
+      success: true,
+      token,
+      data: user
+    });
 };

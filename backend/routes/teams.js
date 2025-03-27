@@ -13,25 +13,28 @@ const router = express.Router();
 
 const { protect, authorize } = require('../middleware/auth');
 
+// Apply protection to all routes
 router.use(protect);
 
+// Public routes (only require authentication)
 router
   .route('/')
-  .get(getTeams)
-  .post(authorize('admin'), createTeam);
+  .get(authorize('admin', 'team_admin'), getTeams)
+  .post(createTeam);  // Any authenticated user can create a team
 
+// Protected routes (require specific roles)
 router
   .route('/:id')
   .get(getTeam)
-  .put(authorize('admin'), updateTeam)
-  .delete(authorize('admin'), deleteTeam);
+  .put(authorize('admin', 'team_admin'), updateTeam)
+  .delete(authorize('admin', 'team_admin'), deleteTeam);
 
 router
   .route('/:id/members')
-  .post(authorize('admin'), addTeamMember);
+  .post(authorize('admin', 'team_admin'), addTeamMember);
 
 router
   .route('/:id/members/:userId')
-  .delete(authorize('admin'), removeTeamMember);
+  .delete(authorize('admin', 'team_admin'), removeTeamMember);
 
 module.exports = router;

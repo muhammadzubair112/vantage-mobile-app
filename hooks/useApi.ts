@@ -1,21 +1,25 @@
+/// <reference types="node" />
+
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const PRODUCTION_API_URL = 'https://api.vantage.sh/api';
-const DEVELOPMENT_API_URL = 'http://localhost:5001/api';
+declare const __DEV__: boolean;
 
-const API_URL = process.env.NODE_ENV === 'production' ? PRODUCTION_API_URL : DEVELOPMENT_API_URL;
+// API URL - using local server until deployment
+const API_URL = Platform.select({
+  ios: 'http://192.168.86.249:5001/api',
+  android: 'http://192.168.86.249:5001/api',
+  default: 'http://192.168.86.249:5001/api',
+});
 
-// Log the selected API URL for debugging
+// Log the API URL for debugging
 if (__DEV__) {
   console.log('API Configuration:', {
     url: API_URL,
     platform: Platform.OS,
-    isDevelopment: process.env.NODE_ENV !== 'production',
-    baseUrl: API_URL,
-    environment: process.env.NODE_ENV || 'development'
+    environment: 'development'
   });
 }
 
@@ -25,6 +29,7 @@ interface ApiOptions {
   requiresAuth?: boolean;
   retries?: number;
   timeout?: number;
+  params?: Record<string, any>;
 }
 
 interface ApiError extends Error {
@@ -133,11 +138,20 @@ export const useApi = () => {
       body,
       requiresAuth = true,
       retries = 3,
-      timeout = 10000 // 10 second timeout
+      timeout = 10000, // 10 second timeout
+      params
     } = options;
 
     setIsLoading(true);
     setError(null);
+
+    // If we need auth and don't have a token, try to load it
+    if (requiresAuth && !token) {
+      const storedToken = await AsyncStorage.getItem('auth_token');
+      if (storedToken) {
+        setToken(storedToken);
+      }
+    }
 
     let attempt = 0;
     let lastError: ApiError | null = null;
@@ -149,36 +163,43 @@ export const useApi = () => {
           'Accept': 'application/json',
         };
 
-        if (requiresAuth) {
-          if (!token) {
-            throw Object.assign(new Error('Authentication required'), { status: 401 });
-          }
-          headers['Authorization'] = `Bearer ${token}`;
+        // Add token to headers if we have one
+        const currentToken = token || await AsyncStorage.getItem('auth_token');
+        if (currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`;
         }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+        // Handle query parameters
+        const url = new URL(`${API_URL}${endpoint}`);
+        if (params) {
+          Object.entries(params).forEach(([key, value]) => {
+            url.searchParams.append(key, value);
+          });
+        }
+
         const config: RequestInit = {
           method,
           headers,
-          credentials: 'include', // Include cookies for CORS
+          credentials: 'include',
           body: body ? JSON.stringify(body) : undefined,
           signal: controller.signal
         };
 
         if (__DEV__) {
           console.log(`API Request:`, {
-            url: `${API_URL}${endpoint}`,
+            url: url.toString(),
             method,
-            headers: { ...headers, Authorization: requiresAuth ? 'Bearer [HIDDEN]' : undefined },
+            headers: { ...headers, Authorization: currentToken ? 'Bearer [HIDDEN]' : undefined },
             body: body ? '[HIDDEN]' : undefined,
             attempt: attempt + 1,
             maxRetries: retries
           });
         }
 
-        const response = await fetch(`${API_URL}${endpoint}`, config);
+        const response = await fetch(url.toString(), config);
         clearTimeout(timeoutId);
 
         const contentType = response.headers.get('content-type');
@@ -198,6 +219,13 @@ export const useApi = () => {
           error.status = response.status;
           error.data = data;
           throw error;
+        }
+
+        // If this is a login/register response and we got a token, save it
+        if ((!requiresAuth && data?.token) || (endpoint === '/auth/login' || endpoint === '/auth/register')) {
+          if (data.token) {
+            await saveToken(data.token);
+          }
         }
 
         setIsLoading(false);
@@ -221,7 +249,7 @@ export const useApi = () => {
     setIsLoading(false);
     setError(lastError?.message || 'Request failed after multiple attempts');
     throw lastError;
-  }, [token, handleApiError]);
+  }, [token, handleApiError, saveToken]);
 
   // Load token on mount
   useEffect(() => {

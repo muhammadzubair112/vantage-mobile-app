@@ -1,0 +1,31 @@
+# Server Configuration
+NODE_ENV=production
+PORT=5001
+HOST=0.0.0.0
+
+# MongoDB Configuration
+MONGO_URI=mongodb+srv://vantagebusinessinc:SD5jnAzcU4kBYiuN@vantagetest.7ynog.mongodb.net/?retryWrites=true&w=majority&appName=VantageTest
+
+# JWT Configuration
+JWT_SECRET=vantage_jwt_secret_key_2024
+JWT_EXPIRE=30d
+JWT_COOKIE_EXPIRE=30
+
+# CORS Configuration
+CORS_ORIGIN=https://vantage-app.vercel.app
+
+# Rate Limiting
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX=100
+
+# Email Configuration
+GMAIL_USER=
+GMAIL_APP_PASSWORD=
+# Update this to your actual deployed frontend URL
+FRONTEND_URL=https://vantage-app.vercel.app
+
+# Other existing environment variables
+MONGODB_URI=mongodb://localhost:27017/vantage
+JWT_SECRET=your_jwt_secret_here
+JWT_EXPIRE=30d
+JWT_COOKIE_EXPIRE=30

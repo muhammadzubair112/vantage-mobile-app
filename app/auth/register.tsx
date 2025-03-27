@@ -91,7 +91,7 @@ export default function RegisterScreen() {
       const success = await register(name, email, password, api, companyName, phone);
       
       if (success) {
-        router.replace('/(tabs)');
+        router.replace('/auth/verify');
       }
     } catch (err) {
       // Error is handled by the auth store

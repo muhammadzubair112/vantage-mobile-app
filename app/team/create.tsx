@@ -13,11 +13,13 @@ import { useRouter, Stack } from 'expo-router';
 import { Users } from 'lucide-react-native';
 import { useAuthStore } from '@/hooks/useAuthStore';
 import { useTheme } from '@/components/ThemeProvider';
+import { useApi } from '@/hooks/useApi';
 
 export default function CreateTeamScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { createTeam } = useAuthStore();
+  const api = useApi();
   
   const [teamName, setTeamName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +36,7 @@ export default function CreateTeamScreen() {
     }
   }, [isSuccess, router]);
   
-  const handleCreateTeam = () => {
+  const handleCreateTeam = async () => {
     if (!teamName.trim()) {
       Alert.alert('Error', 'Please enter a team name');
       return;
@@ -43,23 +45,22 @@ export default function CreateTeamScreen() {
     setIsLoading(true);
     
     try {
-      const teamId = createTeam(teamName.trim());
+      const teamId = await createTeam(teamName.trim(), api);
       
       if (teamId) {
-        setIsLoading(false);
         setIsSuccess(true);
         Alert.alert(
           'Team Created',
           'Your team has been created successfully. You will be redirected to manage your team in a moment.',
         );
       } else {
-        setIsLoading(false);
         Alert.alert('Error', 'Failed to create team. Please try again.');
       }
     } catch (error) {
-      setIsLoading(false);
       Alert.alert('Error', 'An unexpected error occurred.');
       console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
   

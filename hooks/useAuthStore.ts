@@ -11,8 +11,12 @@ export interface User {
   email: string;
   phone?: string;
   companyName?: string;
-  role: 'admin' | 'team_member' | 'client';
+  role: 'client' | 'team_member' | 'team_admin' | 'admin';
   teamId?: string;
+  isEmailVerified: boolean;
+  isActive: boolean;
+  lastLogin?: Date;
+  createdAt: Date;
 }
 
 export interface Team {
@@ -28,12 +32,14 @@ interface AuthState {
   teams: Team[];
   error: string | null;
   isLoading: boolean;
+  isEmailVerified: boolean;
   
   // Auth actions
   login: (email: string, password: string, api: ApiInstance) => Promise<boolean>;
   register: (name: string, email: string, password: string, api: ApiInstance, companyName?: string, phone?: string) => Promise<boolean>;
   logout: (api: ApiInstance) => void;
   updateUserProfile: (userData: Partial<User>, api: ApiInstance) => Promise<boolean>;
+  resendVerificationEmail: (api: ApiInstance) => Promise<boolean>;
   
   // Team actions
   fetchTeams: (api: ApiInstance) => Promise<Team[]>;
@@ -54,7 +60,8 @@ const initialState = {
   isAuthenticated: false,
   teams: [],
   error: null,
-  isLoading: false
+  isLoading: false,
+  isEmailVerified: false
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -77,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
           });
           
           if (response.success) {
+            // Save token first and wait for it to complete
             await api.saveToken(response.token);
             
             set({ 
@@ -85,9 +93,17 @@ export const useAuthStore = create<AuthState>()(
               error: null
             });
             
-            // Fetch teams after login
-            const teams = await get().fetchTeams(api);
-            set({ teams });
+            // Add a small delay to ensure token is properly saved
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Now that token is saved, fetch teams
+            try {
+              const teams = await get().fetchTeams(api);
+              set({ teams });
+            } catch (error: any) {
+              console.error('Error fetching teams:', error);
+              // Don't fail login if teams fetch fails
+            }
             
             return true;
           }
@@ -124,6 +140,7 @@ export const useAuthStore = create<AuthState>()(
             set({
               user: response.data,
               isAuthenticated: true,
+              isEmailVerified: response.data.isEmailVerified,
               teams: [],
               error: null
             });
@@ -365,6 +382,29 @@ export const useAuthStore = create<AuthState>()(
           return false;
         } catch (error: any) {
           set({ error: error.message || 'Failed to delete team' });
+          return false;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      resendVerificationEmail: async (api: ApiInstance) => {
+        try {
+          set({ isLoading: true, error: null });
+          
+          const response = await api.apiCall('/auth/resend-verification', {
+            method: 'POST',
+            requiresAuth: true
+          });
+
+          if (response.success) {
+            return true;
+          }
+          
+          set({ error: 'Failed to resend verification email' });
+          return false;
+        } catch (error: any) {
+          set({ error: error.message || 'Failed to resend verification email' });
           return false;
         } finally {
           set({ isLoading: false });

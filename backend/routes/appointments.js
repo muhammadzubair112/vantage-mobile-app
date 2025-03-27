@@ -5,31 +5,28 @@ const {
   createAppointment,
   updateAppointment,
   deleteAppointment,
-  getUserAppointments,
   getTimeSlots
 } = require('../controllers/appointments');
 
 const router = express.Router();
 
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
+
+// Public routes
+router.route('/timeslots').get(getTimeSlots);
+
+// Protected routes
+router.use(protect);
 
 router
   .route('/')
-  .get(protect, getAppointments)
+  .get(getAppointments)
   .post(createAppointment);
-
-router
-  .route('/timeslots')
-  .get(getTimeSlots);
-
-router
-  .route('/user')
-  .get(protect, getUserAppointments);
 
 router
   .route('/:id')
   .get(getAppointment)
-  .put(protect, updateAppointment)
-  .delete(protect, deleteAppointment);
+  .put(updateAppointment)
+  .delete(deleteAppointment);
 
 module.exports = router;

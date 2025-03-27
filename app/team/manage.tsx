@@ -13,11 +13,13 @@ import { useRouter } from 'expo-router';
 import { UserPlus, User, X, Phone, Trash2, Pencil } from 'lucide-react-native';
 import { useAuthStore, Team } from '@/hooks/useAuthStore';
 import { useTheme } from '@/components/ThemeProvider';
+import { useApi } from '@/hooks/useApi';
 
 export default function ManageTeamScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user, teams, addTeamMember, removeTeamMember, deleteTeam, updateTeamName } = useAuthStore();
+  const api = useApi();
   
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -30,40 +32,77 @@ export default function ManageTeamScreen() {
   
   const isTeamOwner = userTeam?.ownerId === user?.id;
   
-  const handleAddMember = () => {
-    if (!phoneNumber.trim()) {
-      Alert.alert('Error', 'Please enter a phone number');
-      return;
-    }
-    
+  const handleAddMember = async () => {
     if (!userTeam) {
-      Alert.alert('Error', 'Team not found');
+      Alert.alert(
+        'Error',
+        'Team not found',
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
     
     if (!isTeamOwner) {
-      Alert.alert('Error', 'Only team owners can add members');
+      Alert.alert(
+        'Error',
+        'Only team owners can add members',
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
     
-    const success = addTeamMember(userTeam.id, phoneNumber.trim());
+    if (!phoneNumber.trim()) {
+      Alert.alert(
+        'Error',
+        'Please enter a phone number',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
     
-    if (success) {
-      Alert.alert('Success', 'Team member added successfully');
-      setPhoneNumber('');
-    } else {
-      Alert.alert('Error', 'Failed to add team member');
+    try {
+      const success = await addTeamMember(userTeam.id, phoneNumber.trim(), api);
+      if (success) {
+        setPhoneNumber('');
+        Alert.alert(
+          'Success',
+          'Team member added successfully',
+          [{ text: 'OK', style: 'default' }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to add team member',
+          [{ text: 'OK', style: 'default' }]
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        'Failed to add team member',
+        [{ text: 'OK', style: 'default' }]
+      );
     }
   };
   
   const handleRemoveMember = (memberId: string) => {
     if (!userTeam) {
-      Alert.alert('Error', 'Team not found');
+      Alert.alert(
+        'Error',
+        'Team not found',
+        [{ text: 'OK', style: 'default' }],
+        { cancelable: true }
+      );
       return;
     }
     
     if (!isTeamOwner) {
-      Alert.alert('Error', 'Only team owners can remove members');
+      Alert.alert(
+        'Error',
+        'Only team owners can remove members',
+        [{ text: 'OK', style: 'default' }],
+        { cancelable: true }
+      );
       return;
     }
     
@@ -78,22 +117,52 @@ export default function ManageTeamScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
-            removeTeamMember(userTeam.id, memberId);
-            Alert.alert('Success', 'Team member removed successfully');
+          onPress: async () => {
+            try {
+              const success = await removeTeamMember(userTeam.id, memberId, api);
+              if (success) {
+                Alert.alert(
+                  'Success',
+                  'Team member removed successfully',
+                  [{ text: 'OK', style: 'default' }],
+                  { cancelable: true }
+                );
+              } else {
+                Alert.alert(
+                  'Error',
+                  'Failed to remove team member',
+                  [{ text: 'OK', style: 'default' }],
+                  { cancelable: true }
+                );
+              }
+            } catch (error) {
+              Alert.alert(
+                'Error',
+                'Failed to remove team member',
+                [{ text: 'OK', style: 'default' }],
+                { cancelable: true }
+              );
+            }
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
-  const handleDeleteTeam = () => {
+  const handleDeleteTeam = async () => {
     if (!userTeam) {
       return;
     }
     
-    if (!isTeamOwner) {
-      Alert.alert('Error', 'Only team owners can delete the team');
+    const canDeleteTeam = isTeamOwner || user?.role === 'team_admin' || user?.role === 'admin';
+    
+    if (!canDeleteTeam) {
+      Alert.alert(
+        'Error',
+        'Only team owners and team admins can delete the team',
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
     
@@ -108,10 +177,29 @@ export default function ManageTeamScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            deleteTeam(userTeam.id);
-            Alert.alert('Success', 'Team deleted successfully');
-            router.replace('/(tabs)/profile');
+          onPress: async () => {
+            try {
+              const success = await deleteTeam(userTeam.id, api);
+              if (success) {
+                Alert.alert(
+                  'Success',
+                  'Team deleted successfully',
+                  [{ text: 'OK', style: 'default', onPress: () => router.replace('/(tabs)/profile') }]
+                );
+              } else {
+                Alert.alert(
+                  'Error',
+                  'Failed to delete team',
+                  [{ text: 'OK', style: 'default' }]
+                );
+              }
+            } catch (error) {
+              Alert.alert(
+                'Error',
+                'Failed to delete team',
+                [{ text: 'OK', style: 'default' }]
+              );
+            }
           },
         },
       ]
@@ -123,7 +211,7 @@ export default function ManageTeamScreen() {
     
     if (isEditingName) {
       if (newTeamName.trim()) {
-        updateTeamName(userTeam.id, newTeamName.trim());
+        updateTeamName(userTeam.id, newTeamName.trim(), api);
       }
       setIsEditingName(false);
     } else {
@@ -135,7 +223,7 @@ export default function ManageTeamScreen() {
   const handleUpdateTeamName = (text: string) => {
     setNewTeamName(text);
     if (userTeam && isTeamOwner && text.trim()) {
-      updateTeamName(userTeam.id, text.trim());
+      updateTeamName(userTeam.id, text.trim(), api);
     }
   };
 

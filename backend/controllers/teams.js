@@ -59,7 +59,7 @@ exports.getTeam = asyncHandler(async (req, res, next) => {
 
 // @desc    Create new team
 // @route   POST /api/teams
-// @access  Private/Admin
+// @access  Private
 exports.createTeam = asyncHandler(async (req, res, next) => {
   // Add user to request body
   req.body.ownerId = req.user.id;
@@ -67,8 +67,15 @@ exports.createTeam = asyncHandler(async (req, res, next) => {
 
   const team = await Team.create(req.body);
 
-  // Update user with team ID
-  await User.findByIdAndUpdate(req.user.id, { teamId: team._id });
+  // Update user with team ID and set role to admin
+  await User.findByIdAndUpdate(
+    req.user.id,
+    { 
+      teamId: team._id,
+      role: 'team_admin'  // Set the team creator as team_admin
+    },
+    { new: true }  // Return the updated document
+  );
 
   res.status(201).json({
     success: true,
@@ -121,8 +128,8 @@ exports.deleteTeam = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Make sure user is team owner
-  if (team.ownerId.toString() !== req.user.id && req.user.role !== 'admin') {
+  // Make sure user is team owner, team_admin, or admin
+  if (team.ownerId.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'team_admin') {
     return next(
       new ErrorResponse(
         `User ${req.user.id} is not authorized to delete this team`,
@@ -134,10 +141,11 @@ exports.deleteTeam = asyncHandler(async (req, res, next) => {
   // Update all team members to remove teamId
   await User.updateMany(
     { _id: { $in: team.members } },
-    { $unset: { teamId: "" } }
+    { $unset: { teamId: "" }, $set: { role: 'client' } }
   );
 
-  await team.remove();
+  // Delete the team
+  await Team.findByIdAndDelete(req.params.id);
 
   res.status(200).json({
     success: true,
